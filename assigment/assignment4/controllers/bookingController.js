@@ -13,17 +13,40 @@ exports.getAllBookings = async (req, res) => {
 exports.createBooking = async (req, res) => {
     try {
         const { customerName, roomNumber, startTime, endTime } = req.body;
-        
+
+        const start = new Date(startTime);
+        const end = new Date(endTime);
+        const now = new Date();
+
+        if (start <= now) {
+            return res.status(400).json({ message: "Start time must be in the future" });
+        }
+        if (end <= start) {
+            return res.status(400).json({ message: "End time must be after start time" });
+        }
+
         const room = await Room.findOne({ roomNumber });
         if (!room) {
             return res.status(404).json({ message: "Room not found" });
         }
-        
-        const hours = (new Date(endTime) - new Date(startTime)) / (1000 * 60 * 60);
+
+        const overlappingBooking = await Booking.findOne({
+            roomNumber,
+            $or: [
+                { startTime: { $lt: end }, endTime: { $gt: start } } 
+            ]
+        });
+
+        if (overlappingBooking) {
+            return res.status(400).json({ message: "Room is already booked for this time slot" });
+        }
+
+        const hours = Math.ceil((end - start) / (1000 * 60 * 60));
         const totalAmount = hours * room.pricePerHour;
 
-        const newBooking = new Booking({ customerName, roomNumber, startTime, endTime, totalAmount });
+        const newBooking = new Booking({ customerName, roomNumber, startTime: start, endTime: end, totalAmount });
         await newBooking.save();
+        
         res.status(201).json(newBooking);
     } catch (error) {
         res.status(400).json({ message: error.message });
@@ -34,49 +57,58 @@ exports.updateBooking = async (req, res) => {
     try {
         const { bookingId } = req.params;
         const { startTime, endTime, customerName, roomNumber } = req.body;
+        const start = new Date(startTime);
+        const end = new Date(endTime);
+        const now = new Date();
 
-        // Lấy thông tin booking cũ
         const booking = await Booking.findById(bookingId);
         if (!booking) {
             return res.status(404).json({ message: "Booking not found" });
         }
 
-        // Kiểm tra nếu có thay đổi roomNumber
         let room = await Room.findOne({ roomNumber: roomNumber || booking.roomNumber });
         if (!room) {
             return res.status(400).json({ message: "Room number not found" });
         }
 
-        // Cập nhật roomNumber nếu có thay đổi
         if (roomNumber) {
             booking.roomNumber = roomNumber;
         }
 
-        // Cập nhật tên khách hàng (nếu có)
         if (customerName) {
             booking.customerName = customerName;
         }
 
-        // Kiểm tra nếu có cập nhật thời gian
-        if (startTime || endTime) {
-            const newStartTime = startTime ? new Date(startTime) : booking.startTime;
-            const newEndTime = endTime ? new Date(endTime) : booking.endTime;
+        if (start || end) {
+            const newStartTime = start ? new Date(start) : booking.startTime;
+            const newEndTime = end ? new Date(end) : booking.endTime;
+            
+            if (start <= now) {
+                return res.status(400).json({ message: "Start time must be in the future" });
+            } 
 
-            // Kiểm tra thời gian hợp lệ
             if (newEndTime <= newStartTime) {
                 return res.status(400).json({ message: "End time must be after start time" });
             }
 
-            // Cập nhật thời gian mới
+            const overlappingBooking = await Booking.findOne({
+                roomNumber,
+                $or: [
+                    { startTime: { $lt: end }, endTime: { $gt: start } } 
+                ]
+            });
+    
+            if (overlappingBooking) {
+                return res.status(400).json({ message: "Room is already booked for this time slot" });
+            }
+
             booking.startTime = newStartTime;
             booking.endTime = newEndTime;
 
-            // Tính lại tổng tiền dựa trên số giờ thuê
-            const hours = Math.ceil((newEndTime - newStartTime) / (1000 * 60 * 60)); // Số giờ
+            const hours = Math.ceil((newEndTime - newStartTime) / (1000 * 60 * 60)); 
             booking.totalAmount = hours * room.pricePerHour;
         }
 
-        // Lưu cập nhật vào database
         await booking.save();
 
         res.status(200).json(booking);
