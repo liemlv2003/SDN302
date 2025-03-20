@@ -19,5 +19,5 @@ app.use("/auth", authRoutes);
 app.use("/bookings", bookingRoutes);
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });

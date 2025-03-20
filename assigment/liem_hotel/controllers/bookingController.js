@@ -60,19 +60,11 @@ exports.cancelBooking = async (req, res) => {
 exports.getBookings = async (req, res) => {
   try {
     if (req.user.role !== "admin") return res.status(403).json({ message: "Access denied" });
-
-    const { page = 1, limit = 10 } = req.query;
     const bookings = await Booking.find()
-      .populate("customerId", "username")
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .exec();
 
     const count = await Booking.countDocuments();
     res.json({
-      bookings,
-      totalPages: Math.ceil(count / limit),
-      currentPage: page
+      bookings
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
